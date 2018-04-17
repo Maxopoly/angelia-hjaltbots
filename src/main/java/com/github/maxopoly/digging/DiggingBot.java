@@ -5,6 +5,7 @@ import com.github.maxopoly.angeliacore.actions.actions.MoveTo;
 import com.github.maxopoly.angeliacore.connection.DisconnectReason;
 import com.github.maxopoly.angeliacore.connection.ServerConnection;
 import com.github.maxopoly.angeliacore.model.item.Material;
+import com.github.maxopoly.angeliacore.model.location.Location;
 import com.github.maxopoly.angeliacore.plugin.AngeliaPlugin;
 import org.kohsuke.MetaInfServices;
 
@@ -51,6 +52,8 @@ public class DiggingBot extends AbstractMiningBot {
 		this.tunnelHeight = oldY - y;
 		queue.queue(new DigDown(connection, field.getStartingLocation().getBlockCenterXZ(), tunnelHeight,
 				getBreakTime(true)));
+		throwLocation = new Location(throwLocation.getBlockX(), y, throwLocation.getBlockZ());
+		throwFocusLocation = throwFocusLocation.relativeBlock(0, tunnelHeight, 0);
 		connection.getLogger().info("Starting next layer, estimated blocks left: " + field.getArea() * (y + tunnelHeight));
 		field = field.copy(y);
 		locIterator = field.iterator();

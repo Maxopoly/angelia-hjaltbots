@@ -4,11 +4,13 @@ import com.github.maxopoly.angeliacore.actions.ActionLock;
 import com.github.maxopoly.angeliacore.actions.ActionQueue;
 import com.github.maxopoly.angeliacore.actions.CodeAction;
 import com.github.maxopoly.angeliacore.actions.actions.DetectAndEatFood;
+import com.github.maxopoly.angeliacore.actions.actions.LookAt;
 import com.github.maxopoly.angeliacore.actions.actions.LookAtAndBreakBlock;
 import com.github.maxopoly.angeliacore.actions.actions.LookAtAndPlaceBlock;
 import com.github.maxopoly.angeliacore.actions.actions.MoveTo;
 import com.github.maxopoly.angeliacore.actions.actions.Wait;
 import com.github.maxopoly.angeliacore.actions.actions.inventory.ChangeSelectedItem;
+import com.github.maxopoly.angeliacore.actions.actions.inventory.ClickInventory;
 import com.github.maxopoly.angeliacore.actions.actions.inventory.PickHotbarItemByType;
 import com.github.maxopoly.angeliacore.connection.DisconnectReason;
 import com.github.maxopoly.angeliacore.connection.ServerConnection;
@@ -28,6 +30,7 @@ import com.github.maxopoly.angeliacore.model.location.Vector;
 import com.github.maxopoly.angeliacore.plugin.AngeliaPlugin;
 import com.github.maxopoly.angeliacore.util.BreakTimeCalculator;
 import com.github.maxopoly.angeliacore.util.HorizontalField;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -50,6 +53,15 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 	protected int tunnelHeight;
 	protected ItemStack cachedTool;
 	protected int bridgingLeftOver;
+	protected Location throwLocation;
+	protected Location throwFocusLocation;
+	private MovementDirection throwDirection;
+	private int throwIntervall;
+	private int throwIntervallCounter;
+	private static final List<Material> throwOutMats = Arrays.asList(new Material[] { Material.COAL, Material.COAL_ORE,
+			Material.REDSTONE, Material.REDSTONE_ORE, Material.LAPIS_ORE, Material.INK_SACK, Material.GOLD_ORE,
+			Material.IRON_ORE, Material.DIAMOND, Material.DIAMOND_ORE, Material.STONE, Material.FLINT, Material.GRAVEL,
+			Material.DIRT, Material.COBBLESTONE, Material.PRISMARINE_SHARD });
 
 	public AbstractMiningBot(String name, Material toolUsed, int snakeLineDistance) {
 		super(name);
@@ -81,11 +93,36 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 			if (lastLocations.size() > locationCacheSize) {
 				lastLocations.remove(0);
 			}
+			if (field.getStartingLocation().toVector().subtract(connection.getPlayerStatus().getLocation().toBlockLocation().toVector())
+					.isParallel(field.getSecondaryDirection().toVector())) {
+				if(++throwIntervallCounter >= throwIntervall) {
+					deliverMaterials(connection.getPlayerStatus().getLocation());
+					throwIntervallCounter = 0;
+				}
+			}
 			handleLocation(target, direction, false);
 			placeTorch(target);
 		} else {
 			atEndOfField();
 		}
+	}
+
+	private void deliverMaterials(Location originLocation) {
+		queue.queue(new MoveTo(connection, throwLocation.toBlockLocation().getBlockCenterXZ(), MoveTo.SPRINTING_SPEED));
+		queue.queue(new LookAt(connection, throwFocusLocation, throwDirection.getOpposite().toBlockFace()));
+		PlayerInventory inv = connection.getPlayerStatus().getPlayerInventory();
+		Inventory storageInv = inv.getPlayerStorageWithoutHotbar();
+		for (int i = 0; i < storageInv.getSize(); i++) {
+			ItemStack is = storageInv.getSlot(i);
+			if (is == null || is.getMaterial() == Material.EMPTY_SLOT) {
+				continue;
+			}
+			if (throwOutMats.contains(is.getMaterial())) {
+				// throw entire stack
+				queue.queue(new ClickInventory(connection, (byte) 0, inv.translateStorageSlotToTotal(i), (byte) 1, 4, is));
+			}
+		}
+		queue.queue(new MoveTo(connection, originLocation, MoveTo.SPRINTING_SPEED));
 	}
 
 	protected void pickTool() {
@@ -171,6 +208,48 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 		this.field = new HorizontalField(lowerX, upperX, lowerZ, upperZ, y, startingDirection, secondaryDirection, true,
 				snakeLineDistance);
 		this.locIterator = field.iterator();
+
+		if (args.containsKey("tl")) {
+			int x;
+			int z;
+			try {
+				x = Integer.parseInt(args.get("tl").get(0));
+				z = Integer.parseInt(args.get("tl").get(1));
+			} catch (NumberFormatException e) {
+				connection.getLogger().warn("Throw location contained malformatted numbers");
+				finish();
+				return;
+			}
+			throwLocation = new Location(x, y, z);
+			if (!args.containsKey("td")) {
+				connection.getLogger().info("No throw direction supplied, throw location was ignored");
+				throwLocation = null;
+			} else {
+				try {
+					throwDirection = MovementDirection.valueOf(args.get("td").get(0).toUpperCase());
+					if (!args.containsKey("td")) {
+						connection.getLogger().info("No throw intervall supplied, throw location was ignored");
+						throwLocation = null;
+					} else {
+						try {
+							throwIntervall = Integer.parseInt(args.get("ti").get(0));
+						} catch (NumberFormatException e) {
+							connection.getLogger().info(
+									"The provided throw intervall could not be parsed, ignoring throwing location");
+							throwLocation = null;
+						}
+					}
+				} catch (IllegalArgumentException e) {
+					connection.getLogger()
+							.info("The provided movement direction could not be parsed, ignoring throwing location");
+					throwLocation = null;
+					return;
+				}
+			}
+			Vector throwVec = throwDirection.toVector().multiply(5);
+			throwFocusLocation = throwLocation.relativeBlock(throwVec.getX(), -3 , throwVec.getZ());
+		}
+
 		if (args.containsKey("ff")) {
 			// fast forward to current location
 			Location playerLoc = connection.getPlayerStatus().getLocation().toBlockLocation();
@@ -181,6 +260,12 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 			}
 			while (!found && locIterator.hasNext()) {
 				Location loc = locIterator.next();
+				if (field.getStartingLocation().toVector().subtract(loc.toVector())
+						.isParallel(field.getSecondaryDirection().toVector())) {
+					if(++throwIntervallCounter >= throwIntervall) {
+						throwIntervallCounter = 0;
+					}
+				}
 				if (loc.equals(playerLoc)) {
 					found = true;
 					break;
@@ -262,7 +347,9 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 			}
 		});
 		Location desto = loc.getBlockCenterXZ();
-		queue.queue(new MoveTo(connection, desto.getMiddle(loc.getBlockCenterXZ()), MoveTo.SPRINTING_SPEED));
+		Location locToPlaceFrom = loc.getBlockCenterXZ().getScaledMiddle(desto, 0.68);
+		queue.queue(new MoveTo(connection, locToPlaceFrom, MoveTo.SPRINTING_SPEED));
+		queue.queue(new Wait(connection, 2));
 		queue.queue(new LookAtAndPlaceBlock(connection, currentLoc, direction.toBlockFace()));
 		queue.queue(new MoveTo(connection, desto, MoveTo.SPRINTING_SPEED));
 
@@ -418,7 +505,9 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 		options.add(Option.builder("h").longOpt("height")
 				.desc("How many blocks the bot should mine per location. Defaults to 4, must be an integer between 2 and 6")
 				.numberOfArgs(1).required(false).build());
+		options.add(Option.builder("tl").longOpt("throwLocation").numberOfArgs(2).required(false).build());
+		options.add(Option.builder("td").longOpt("throwDirection").numberOfArgs(1).required(false).build());
+		options.add(Option.builder("ti").longOpt("throwIntervall").numberOfArgs(1).required(false).build());
 		return options;
 	}
-
 }
