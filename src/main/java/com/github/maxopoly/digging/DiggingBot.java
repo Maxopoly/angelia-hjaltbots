@@ -52,8 +52,10 @@ public class DiggingBot extends AbstractMiningBot {
 		this.tunnelHeight = oldY - y;
 		queue.queue(new DigDown(connection, field.getStartingLocation().getBlockCenterXZ(), tunnelHeight,
 				getBreakTime(true)));
-		throwLocation = new Location(throwLocation.getBlockX(), y, throwLocation.getBlockZ());
-		throwFocusLocation = throwFocusLocation.relativeBlock(0, tunnelHeight, 0);
+		if (throwLocation != null) {
+			throwLocation = new Location(throwLocation.getBlockX(), y, throwLocation.getBlockZ());
+			throwFocusLocation = throwFocusLocation.relativeBlock(0, tunnelHeight, 0);
+		}
 		connection.getLogger().info("Starting next layer, estimated blocks left: " + field.getArea() * (y + tunnelHeight));
 		field = field.copy(y);
 		locIterator = field.iterator();

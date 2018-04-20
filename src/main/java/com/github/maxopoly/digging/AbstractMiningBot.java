@@ -61,7 +61,7 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 	private static final List<Material> throwOutMats = Arrays.asList(new Material[] { Material.COAL, Material.COAL_ORE,
 			Material.REDSTONE, Material.REDSTONE_ORE, Material.LAPIS_ORE, Material.INK_SACK, Material.GOLD_ORE,
 			Material.IRON_ORE, Material.DIAMOND, Material.DIAMOND_ORE, Material.STONE, Material.FLINT, Material.GRAVEL,
-			Material.DIRT, Material.COBBLESTONE, Material.PRISMARINE_SHARD });
+			Material.DIRT, Material.COBBLESTONE});
 
 	public AbstractMiningBot(String name, Material toolUsed, int snakeLineDistance) {
 		super(name);
@@ -93,7 +93,7 @@ public abstract class AbstractMiningBot extends AngeliaPlugin implements Angelia
 			if (lastLocations.size() > locationCacheSize) {
 				lastLocations.remove(0);
 			}
-			if (field.getStartingLocation().toVector().subtract(connection.getPlayerStatus().getLocation().toBlockLocation().toVector())
+			if (throwLocation != null && field.getStartingLocation().toVector().subtract(connection.getPlayerStatus().getLocation().toBlockLocation().toVector())
 					.isParallel(field.getSecondaryDirection().toVector())) {
 				if(++throwIntervallCounter >= throwIntervall) {
 					deliverMaterials(connection.getPlayerStatus().getLocation());
